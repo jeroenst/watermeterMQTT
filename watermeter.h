@@ -1,0 +1,22 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <termios.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/signal.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <inttypes.h>
+#include <math.h>
+#include <time.h>
+#include <sys/wait.h>
+#include <iostream>
+#include "mqtt.h"
+
