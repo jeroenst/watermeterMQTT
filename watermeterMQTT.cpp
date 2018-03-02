@@ -135,6 +135,17 @@ int   main(int argc, char * argv[])
 						puts("Connecting to MQTT broker...");
 						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
 					}
+
+					sprintf (msg, "%.3f", waterflow_m3h * 16.6666667);
+					printf ("MQTT Sending: home/watermeter/Lmin:%s\n",msg);
+					if(mqtt_publish(broker, "home/watermeter/Lmin", msg, QoS0, 1) == -1) 
+					{
+						printf("publish failed\n");
+						mqtt_disconnect(broker);
+						free(broker);
+						puts("Connecting to MQTT broker...");
+						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
+					}
 				}
 
 				// printf ("%f = %f = %d\n", waterreading_m3, waterreading_m3_old, waterreading_m3 != waterreading_m3_old);
@@ -152,6 +163,7 @@ int   main(int argc, char * argv[])
 						puts("Connecting to MQTT broker...");
 						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
 					}
+
 				}
 			
 			/* Initialize the file descriptor set. */
