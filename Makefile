@@ -2,9 +2,11 @@ CC=g++
 CFLAGS=
 LIBS=
 
-watermeter: watermeter.o mqtt.o
-	$(CC) -o watermeter watermeter.o mqtt.o $(CFLAGS) $(LIBS)
+watermeter: watermeterMQTT.o mqtt.o
+	$(CC) -o watermeterMQTT watermeterMQTT.o mqtt.o $(CFLAGS) $(LIBS)
 
 clean:
-	rm watermeter.o
-	rm watermeter
+	rm watermeterMQTT.o
+	rm watermeterMQTT
+	rm mqtt.o
+	
