@@ -4,7 +4,7 @@ using namespace std;
 
 // Device is a comport like /dev/ttyUSB1
 
-string device = "/dev/ttyUSB0";
+string device = "/dev/ttyUSB1";
 string datafile = "watermeter.dat";
 
 const char *client_name = "watermeter"; 	// -c
@@ -89,7 +89,9 @@ int   main(int argc, char * argv[])
 
 	double waterreading_m3 = 0;
 	waterreading_m3 = read_waterreading (datafile.c_str());
+	double waterreading_m3_old = -1;
 	double waterflow_m3h = 0;
+	double waterflow_m3h_old = -1;
 
 	
 	int pipefd[2];
@@ -105,14 +107,10 @@ int   main(int argc, char * argv[])
 		// Child is worker for TCP connections and database writes
 		close(pipefd[1]); // close the write-end of the pipe, I'm not going to use it
 
-
-		
+		/* Initialize the timeout data structure. */
 		struct timeval timeout;
-		
-			/* Initialize the timeout data structure. */
-			timeout.tv_sec = 10;
-			timeout.tv_usec = 0;
-
+		timeout.tv_sec = 10;
+		timeout.tv_usec = 0;
 
 		/* select returns 0 if timeout, 1 if input available, -1 if error. */
 		while(1)
@@ -123,17 +121,26 @@ int   main(int argc, char * argv[])
 				broker = mqtt_connect(client_name, ip_addr, port);
 			}
  
-			char msg[80];
-			sprintf (msg, "%.3f", waterflow_m3h);
-			if(mqtt_publish(broker, "home/watermeter/m3h", msg, QoS1) == -1) 
+			if (waterflow_m3h != waterflow_m3h_old)
 			{
-				printf("publish failed\n");
+				char msg[80];
+				waterflow_m3h_old = waterflow_m3h;
+				sprintf (msg, "%.3f", waterflow_m3h);
+				if(mqtt_publish(broker, "home/watermeter/m3h", msg, QoS0) == -1) 
+				{
+					printf("publish failed\n");
+				}
 			}
 
-			sprintf (msg, "%.3f", waterreading_m3);
-			if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS1) == -1) 
+			if (waterreading_m3 != waterreading_m3_old)
 			{
-				printf("publish failed\n");
+				char msg[80];
+				waterreading_m3_old = waterreading_m3;
+				sprintf (msg, "%.3f", waterreading_m3);
+				if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS0) == -1) 
+				{
+					printf("publish failed\n");
+				}
 			}
 			
 			/* Initialize the file descriptor set. */
