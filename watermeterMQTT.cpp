@@ -8,8 +8,8 @@ string device = "/dev/ttyUSB1";
 string datafile = "watermeter.dat";
 
 const char *client_name = "watermeter"; 	// -c
-const char *ip_addr     = "127.0.0.1";		// -i
-uint32_t    port        = 1883;			// -p
+string mqttserver     = "127.0.0.1";		// -i
+uint32_t    mqttport        = 1883;			// -p
 const char *topic       = "home/watermeter/m3";	// -t
 
 
@@ -62,7 +62,7 @@ int   main(int argc, char * argv[])
 {
 	if (argc > 1)
 	{
-		printf ("\nReading configfile: %s\n", argv[1]);
+		printf ("Reading configfile: %s\n", argv[1]);
 		FILE *conf_fp = fopen (argv[1], "r");
 		bool inisectionfound = false;
 		while(!feof(conf_fp)) 
@@ -77,7 +77,8 @@ int   main(int argc, char * argv[])
 				sscanf(iniline, "%[^=]=%s", name, setting);
 				if (strcasecmp(name, "serialdevice") == 0) device = string(setting);
 				if (strcasecmp(name, "datafile") == 0) datafile = string(setting);
-				if (strcasecmp(name, "tcpport") == 0) port = atoi(setting);
+				if (strcasecmp(name, "mqttserver") == 0) mqttserver = string(setting);
+				if (strcasecmp(name, "mqttport") == 0) mqttport = atoi(setting);
 			}
 			if (strcasecmp(iniline, "[watermeter]") == 0) inisectionfound = true;
 		}
@@ -85,7 +86,8 @@ int   main(int argc, char * argv[])
 
 	printf ("device = %s\n", device.c_str());
 	printf ("datafile = %s\n", datafile.c_str());
-	printf ("port = %d\n", port); 
+	printf ("mqttserver = %s\n", mqttserver.c_str());
+	printf ("mqttport = %d\n", mqttport);
 
 	double waterreading_m3 = 0;
 	waterreading_m3 = read_waterreading (datafile.c_str());
@@ -101,11 +103,14 @@ int   main(int argc, char * argv[])
 
 	pipe(pipefd); // create the pipe
 	cpid = fork(); // duplicate the current process
-	if (cpid == 0) // if I am the child then
+	if (cpid == 0) // if I am the child 
 	{
-
 		// Child is worker for TCP connections and database writes
 		close(pipefd[1]); // close the write-end of the pipe, I'm not going to use it
+
+	        // Connect to MQTT broker
+	        puts("Connecting to MQTT broker...");
+	        broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
 
 		/* Initialize the timeout data structure. */
 		struct timeval timeout;
@@ -115,14 +120,6 @@ int   main(int argc, char * argv[])
 		/* select returns 0 if timeout, 1 if input available, -1 if error. */
 		while(1)
 		{
-
-			if(broker == 0) {
-			        puts("Connectiong to MQTT broker...");
-				broker = mqtt_connect(client_name, ip_addr, port);
-			}
- 
-			if (broker)
-			{
 				//printf ("%f = %f = %d\n", waterflow_m3h, waterflow_m3h_old, waterflow_m3h != waterflow_m3h_old);
 				if (waterflow_m3h != waterflow_m3h_old)
 				{
@@ -133,10 +130,14 @@ int   main(int argc, char * argv[])
 					if(mqtt_publish(broker, "home/watermeter/m3h", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
+						mqtt_disconnect(broker);
+						free(broker);
+						puts("Connecting to MQTT broker...");
+						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
 					}
 				}
-				//printf ("%f = %f = %d\n", waterreading_m3, waterreading_m3_old, waterreading_m3 != waterreading_m3_old);
 
+				// printf ("%f = %f = %d\n", waterreading_m3, waterreading_m3_old, waterreading_m3 != waterreading_m3_old);
 				if (waterreading_m3 != waterreading_m3_old)
 				{
 					char msg[80];
@@ -146,9 +147,12 @@ int   main(int argc, char * argv[])
 					if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
+						mqtt_disconnect(broker);
+						free(broker);
+						puts("Connecting to MQTT broker...");
+						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
 					}
 				}
-			}
 			
 			/* Initialize the file descriptor set. */
 			fd_set set;
@@ -199,6 +203,7 @@ int   main(int argc, char * argv[])
 	{
 		// Parent does reading the water meter
 		close(pipefd[0]); // close the read-end of the pipe, I'm not going to use it
+		fcntl(pipefd[1], O_NONBLOCK);
 
 		int omode = O_RDONLY;
 
