@@ -121,25 +121,32 @@ int   main(int argc, char * argv[])
 				broker = mqtt_connect(client_name, ip_addr, port);
 			}
  
-			if (waterflow_m3h != waterflow_m3h_old)
+			if (broker)
 			{
-				char msg[80];
-				waterflow_m3h_old = waterflow_m3h;
-				sprintf (msg, "%.3f", waterflow_m3h);
-				if(mqtt_publish(broker, "home/watermeter/m3h", msg, QoS0) == -1) 
+				//printf ("%f = %f = %d\n", waterflow_m3h, waterflow_m3h_old, waterflow_m3h != waterflow_m3h_old);
+				if (waterflow_m3h != waterflow_m3h_old)
 				{
-					printf("publish failed\n");
+					char msg[80];
+					waterflow_m3h_old = waterflow_m3h;
+					sprintf (msg, "%.3f", waterflow_m3h);
+	 				printf ("MQTT Sending: home/watermeter/m3h:%s\n",msg);
+					if(mqtt_publish(broker, "home/watermeter/m3h", msg, QoS0, 1) == -1) 
+					{
+						printf("publish failed\n");
+					}
 				}
-			}
+				//printf ("%f = %f = %d\n", waterreading_m3, waterreading_m3_old, waterreading_m3 != waterreading_m3_old);
 
-			if (waterreading_m3 != waterreading_m3_old)
-			{
-				char msg[80];
-				waterreading_m3_old = waterreading_m3;
-				sprintf (msg, "%.3f", waterreading_m3);
-				if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS0) == -1) 
+				if (waterreading_m3 != waterreading_m3_old)
 				{
-					printf("publish failed\n");
+					char msg[80];
+					waterreading_m3_old = waterreading_m3;
+					sprintf (msg, "%.3f", waterreading_m3);
+					printf ("MQTT Sending: home/watermeter/m3:%s\n",msg);
+					if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS0, 1) == -1) 
+					{
+						printf("publish failed\n");
+					}
 				}
 			}
 			
