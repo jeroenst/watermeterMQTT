@@ -136,9 +136,9 @@ int   main(int argc, char * argv[])
 						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
 					}
 
-					sprintf (msg, "%.3f", waterflow_m3h * 16.6666667);
-					printf ("MQTT Sending: home/watermeter/Lmin:%s\n",msg);
-					if(mqtt_publish(broker, "home/watermeter/Lmin", msg, QoS0, 1) == -1) 
+					sprintf (msg, "%.1f", waterflow_m3h * 16.6666667);
+					printf ("MQTT Sending: home/watermeter/lmin:%s\n",msg);
+					if(mqtt_publish(broker, "home/watermeter/lmin", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
 						mqtt_disconnect(broker);
