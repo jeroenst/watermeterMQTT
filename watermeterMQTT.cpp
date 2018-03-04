@@ -158,14 +158,11 @@ int   main(int argc, char * argv[])
 					waterreading_m3_old = waterreading_m3;
 					sprintf (msg, "%.3f", waterreading_m3);
 					printf ("MQTT Sending: home/watermeter/m3:%s\n",msg);
-				/*	if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS0, 1) == -1) 
+					if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
-						mqtt_disconnect(broker);
-						free(broker);
-						puts("Connecting to MQTT broker...");
-						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
-					}*/
+				//		mqtt_disconnect(broker);
+					}
 
 				}
 				}
