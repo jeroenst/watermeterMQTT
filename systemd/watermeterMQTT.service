@@ -1,10 +1,10 @@
 [Unit]
 Description=watermeter MQTT publisher
 After=network.target auditd.service
-WorkingDirectory=/opt/watermeterMQTT
 
 [Service]
-ExecStart=/opt/watermeterMQTT/watermeterMQTT
+WorkingDirectory=/opt/watermeterMQTT
+ExecStart=/opt/watermeterMQTT/watermeterMQTT /opt/watermeterMQTT/watermeterMQTT.ini
 KillMode=process
 Restart=on-failure
 
