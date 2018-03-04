@@ -99,15 +99,16 @@ int   main(int argc, char * argv[])
 	int pipefd[2];
 	pid_t cpid;
 	char buf;
-	mqtt_broker_handle_t *broker = 0;
 
 	pipe(pipefd); // create the pipe
 	cpid = fork(); // duplicate the current process
-	if (cpid == 0) // if I am the child 
+	if (cpid != 0) // if I am the parent
 	{
 		// Child is worker for TCP connections and database writes
 		close(pipefd[1]); // close the write-end of the pipe, I'm not going to use it
 
+		mqtt_broker_handle_t *broker = 0;
+		
 	        // Connect to MQTT broker
 	        puts("Connecting to MQTT broker...");
 	        broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
@@ -120,6 +121,12 @@ int   main(int argc, char * argv[])
 		/* select returns 0 if timeout, 1 if input available, -1 if error. */
 		while(1)
 		{
+				if (!broker)
+				{
+					broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
+				}
+				else
+				{
 				//printf ("%f = %f = %d\n", waterflow_m3h, waterflow_m3h_old, waterflow_m3h != waterflow_m3h_old);
 				if (waterflow_m3h != waterflow_m3h_old)
 				{
@@ -127,24 +134,20 @@ int   main(int argc, char * argv[])
 					waterflow_m3h_old = waterflow_m3h;
 					sprintf (msg, "%.3f", waterflow_m3h);
 	 				printf ("MQTT Sending: home/watermeter/m3h:%s\n",msg);
-					if(mqtt_publish(broker, "home/watermeter/m3h", msg, QoS0, 1) == -1) 
+					if (mqtt_publish(broker, "home/watermeter/m3h", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
-						mqtt_disconnect(broker);
-						free(broker);
-						puts("Connecting to MQTT broker...");
-						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
+				//		mqtt_disconnect(broker);
 					}
+					
 
 					sprintf (msg, "%.1f", waterflow_m3h * 16.6666667);
 					printf ("MQTT Sending: home/watermeter/lmin:%s\n",msg);
+					
 					if(mqtt_publish(broker, "home/watermeter/lmin", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
-						mqtt_disconnect(broker);
-						free(broker);
-						puts("Connecting to MQTT broker...");
-						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
+				//		mqtt_disconnect(broker);
 					}
 				}
 
@@ -155,15 +158,16 @@ int   main(int argc, char * argv[])
 					waterreading_m3_old = waterreading_m3;
 					sprintf (msg, "%.3f", waterreading_m3);
 					printf ("MQTT Sending: home/watermeter/m3:%s\n",msg);
-					if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS0, 1) == -1) 
+				/*	if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
 						mqtt_disconnect(broker);
 						free(broker);
 						puts("Connecting to MQTT broker...");
 						broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
-					}
+					}*/
 
+				}
 				}
 			
 			/* Initialize the file descriptor set. */

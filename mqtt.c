@@ -89,7 +89,7 @@ struct mqtt_broker_handle
 	uint16_t            port;
 	char                hostname[16];  // based on xxx.xxx.xxx.xxx format
 	char                clientid[24];  // max 23 charaters long
-	bool                connected;
+	bool                connected = false;
     size_t              topic;
     uint16_t            pubMsgID;
     uint16_t            subMsgID;
@@ -135,7 +135,7 @@ mqtt_broker_handle_t * mqtt_connect(const char* client, const char * server_ip, 
         
         // connect
         if ((connect(broker->socket, (struct sockaddr *)&broker->socket_address, sizeof(broker->socket_address))) < 0) {
-            fprintf(stderr,"failed to connect: to server socket\n");
+            fprintf(stderr,"Failed to connect to MQTT broker\n");
             free(broker);
             return 0;
         }
