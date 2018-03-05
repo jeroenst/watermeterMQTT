@@ -5,7 +5,7 @@ using namespace std;
 // Device is a comport like /dev/ttyUSB1
 
 string device = "/dev/ttyUSB1";
-string datafile = "watermeter.dat";
+string datafile = "watermeterMQTT.dat";
 
 const char *client_name = "watermeter"; 	// -c
 string mqttserver     = "127.0.0.1";		// -i
@@ -58,7 +58,7 @@ uint64_t get_posix_clock_time ()
         return 0;
 }
 
-int   main(int argc, char * argv[])
+int main(int argc, char * argv[])
 {
 	if (argc > 1)
 	{
@@ -80,7 +80,7 @@ int   main(int argc, char * argv[])
 				if (strcasecmp(name, "mqttserver") == 0) mqttserver = string(setting);
 				if (strcasecmp(name, "mqttport") == 0) mqttport = atoi(setting);
 			}
-			if (strcasecmp(iniline, "[watermeter]") == 0) inisectionfound = true;
+			if (strcasecmp(iniline, "[watermeterMQTT]") == 0) inisectionfound = true;
 		}
 	}
 
@@ -99,6 +99,7 @@ int   main(int argc, char * argv[])
 	int pipefd[2];
 	pid_t cpid;
 	char buf;
+	int waterflowcountdowntimer = 10;
 
 	pipe(pipefd); // create the pipe
 	cpid = fork(); // duplicate the current process
@@ -107,23 +108,22 @@ int   main(int argc, char * argv[])
 		// Child is worker for TCP connections and database writes
 		close(pipefd[1]); // close the write-end of the pipe, I'm not going to use it
 
-		mqtt_broker_handle_t *broker = 0;
+		mqtt_broker_handle_t *broker = mqtt_gethandle(client_name, mqttserver.c_str(), mqttport);
+		mqtt_connect(broker);
 		
-	        // Connect to MQTT broker
-	        puts("Connecting to MQTT broker...");
-	        broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
-
 		/* Initialize the timeout data structure. */
 		struct timeval timeout;
-		timeout.tv_sec = 10;
-		timeout.tv_usec = 0;
 
 		/* select returns 0 if timeout, 1 if input available, -1 if error. */
 		while(1)
 		{
-				if (!broker)
+			timeout.tv_sec = 1;
+			timeout.tv_usec = 0;
+				mqtt_proc (broker);
+				if (!mqtt_connected(broker))//!broker->connected)
 				{
-					broker = mqtt_connect(client_name, mqttserver.c_str(), mqttport);
+					waterreading_m3_old = -1;
+					waterflow_m3h_old = -1;
 				}
 				else
 				{
@@ -137,7 +137,7 @@ int   main(int argc, char * argv[])
 					if (mqtt_publish(broker, "home/watermeter/m3h", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
-				//		mqtt_disconnect(broker);
+						mqtt_disconnect(broker);
 					}
 					
 
@@ -147,7 +147,7 @@ int   main(int argc, char * argv[])
 					if(mqtt_publish(broker, "home/watermeter/lmin", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
-				//		mqtt_disconnect(broker);
+						mqtt_disconnect(broker);
 					}
 				}
 
@@ -161,7 +161,7 @@ int   main(int argc, char * argv[])
 					if(mqtt_publish(broker, "home/watermeter/m3", msg, QoS0, 1) == -1) 
 					{
 						printf("publish failed\n");
-				//		mqtt_disconnect(broker);
+						mqtt_disconnect(broker);
 					}
 
 				}
@@ -171,7 +171,7 @@ int   main(int argc, char * argv[])
 			fd_set set;
 			FD_ZERO (&set);
 			FD_SET (pipefd[0], &set);
-			
+						
 			select (FD_SETSIZE,&set, NULL, NULL, &timeout);
 			if (FD_ISSET(pipefd[0], &set))
 			{
@@ -194,15 +194,16 @@ int   main(int argc, char * argv[])
 			}
 			else
 			{
-				/* Re-Initialize the timeout data structure. */
-				timeout.tv_sec = 10;
-				timeout.tv_usec = 0;
-				
 				// Select timeout
 				if (waterflow_m3h > 0.001)
 				{
-					if (waterflow_m3h > 0.18) waterflow_m3h = 0.18;
-					else waterflow_m3h = waterflow_m3h / 2;
+					if (waterflowcountdowntimer <= 0)
+					{
+						waterflowcountdowntimer = 10;
+						if (waterflow_m3h > 0.36) waterflow_m3h = 0.18;
+						else waterflow_m3h = waterflow_m3h / 2;
+					}
+					waterflowcountdowntimer--;
 				}
 				else waterflow_m3h = 0;
 			}

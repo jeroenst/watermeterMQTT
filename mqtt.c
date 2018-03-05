@@ -33,7 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <fcntl.h>
 #include <assert.h>
-
+#include <signal.h>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -105,11 +105,10 @@ typedef struct fixed_header_t
 }fixed_header_t;
 
 
-
-mqtt_broker_handle_t * mqtt_connect(const char* client, const char * server_ip, uint32_t port)
+mqtt_broker_handle_t * mqtt_gethandle(const char* client, const char * server_ip, uint32_t port)
 {
-    mqtt_broker_handle_t *broker = (mqtt_broker_handle_t *)calloc(sizeof(mqtt_broker_handle_t), 1) ;
-    if(broker != 0) {
+        mqtt_broker_handle_t * broker = (mqtt_broker_handle_t *)calloc(sizeof(mqtt_broker_handle_t), 1);
+        
         // check connection strings are within bounds
         if ( (strlen(client)+1 > sizeof(broker->clientid)) || (strlen(server_ip)+1 > sizeof(broker->hostname))) {
             fprintf(stderr,"failed to connect: client or server exceed limits\n");
@@ -121,22 +120,28 @@ mqtt_broker_handle_t * mqtt_connect(const char* client, const char * server_ip, 
         strcpy(broker->hostname, server_ip);
         strcpy(broker->clientid, client);
         
+    return broker;
+}
+
+
+int mqtt_connect(mqtt_broker_handle_t * broker)
+{
+    if(broker != 0) {
+        fcntl(broker->socket, F_SETFL, ~O_NONBLOCK);
         if ((broker->socket = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
             fprintf(stderr,"failed to connect: could not create socket\n");
             free(broker);            
             return 0;
         }
-        
-        // create the stuff we need to connect
+
         broker->connected = false;
         broker->socket_address.sin_family = AF_INET;
         broker->socket_address.sin_port = htons(broker->port); // converts the unsigned short from host byte order to network byte order
         broker->socket_address.sin_addr.s_addr = inet_addr(broker->hostname);
-        
+
         // connect
         if ((connect(broker->socket, (struct sockaddr *)&broker->socket_address, sizeof(broker->socket_address))) < 0) {
             fprintf(stderr,"Failed to connect to MQTT broker\n");
-            free(broker);
             return 0;
         }
         
@@ -169,37 +174,97 @@ mqtt_broker_handle_t * mqtt_connect(const char* client, const char * server_ip, 
         memcpy(packet+sizeof(fixed_header)+sizeof(var_header),payload,sizeof(payload));
         
         // send Connect message
-        if (send(broker->socket, packet, sizeof(packet), 0) < sizeof(packet)) {
+        if (send(broker->socket, packet, sizeof(packet), MSG_NOSIGNAL) < sizeof(packet)) {
             close(broker->socket);
-            free(broker);
             return 0;
         }
         
         uint8_t buffer[4];
-        long sz = recv(broker->socket, buffer, sizeof(buffer), 0);  // wait for CONNACK
+        long sz = recv(broker->socket, buffer, sizeof(buffer), MSG_NOSIGNAL);  // wait for CONNACK
         //        printf("buffer size is %ld\n",sz);
         //        printf("%2x:%2x:%2x:%2x\n",(uint8_t)buffer[0],(uint8_t)buffer[1],(uint8_t)buffer[2],(uint8_t)buffer[3]);
+        if (sz <= 0) return 0;
+        
         if( (GET_MESSAGE(buffer[0]) == CONNACK) && ((sz-2)==buffer[1]) && (buffer[3] == Connection_Accepted) ) {
-            printf("Connected to MQTT Server at %s:%4d\n",server_ip, port );
+            printf("Connected to MQTT Server at %s:%4d\n",broker->hostname, broker->port );
         }
         else
         {
             fprintf(stderr,"failed to connect with error: %d\n", buffer[3]);
             close(broker->socket);
-            free(broker);
             return 0;
         }
         
         // set connected flag
         broker->connected = true;
-        
     }
-	
-	return broker;
+        
+    return 1;
 }
 
+int mqtt_proc(mqtt_broker_handle_t *broker)
+{
+    if (broker->connected)
+    {
+        uint8_t buffer[128];
+        fcntl(broker->socket, F_SETFL, O_NONBLOCK);
+        long sz = recv(broker->socket, buffer, sizeof(buffer), 0);  // wait for CONNACK    
+        int err = errno;
+//        printf ("SZ=%d\n", sz); 
+        if (sz < 0)
+        {
+           if ((err == EAGAIN) || (err == EWOULDBLOCK))
+           {
+//              printf("non-blocking operation returned EAGAIN or EWOULDBLOCK\n");
+              return 0;
+           }
+        }
+        else if (sz == 0)
+        {     
+            printf("Connection to MQTT broker disconnected\n", err);
+            close(broker->socket);
+            broker->connected = false;
+            return -1;
+        }
+        else
+        {
+            //printf("message size is %ld\n",sz);
+            if( GET_MESSAGE(buffer[0]) == PUBLISH) {
+                //printf("Got PUBLISH message with size %d\n", (uint8_t)buffer[1]);
+                uint32_t topicSize = (buffer[2]<<8) + buffer[3];
+                //printf("topic size is %d\n", topicSize);
+                //for(int loop = 0; loop < topicSize; ++loop) {
+                //    putchar(buffer[4+loop]);
+                //}
+                //putchar('\n');
+                unsigned long i = 4+topicSize;
+                if (((buffer[0]>>1) & 0x03) > QoS0) {
+                    uint32_t messageId = (buffer[4+topicSize] << 8) + buffer[4+topicSize+1];
+                    //printf("Message ID is %d\n", messageId);
+                    i += 2; // 2 extra for msgID
+                    // if QoS1 the send PUBACK with message ID
+                    uint8_t puback[4] = { SET_MESSAGE(PUBACK), 2, buffer[4+topicSize], buffer[4+topicSize+1] };
+                    if (send(broker->socket, puback, sizeof(puback), MSG_NOSIGNAL) < sizeof(puback)) {
+                        puts("failed to PUBACK");
+                        return -1;
+                    }
+                }
+                printf ("%s\n", buffer);
+                return 1;
+            }
+        }
+    }
+    else 
+    {
+        printf ("MQTT broker disconnected, reconnecting...\n");
+        mqtt_connect(broker);
+    }
+}
 
-
+int mqtt_connected(mqtt_broker_handle_t *broker)
+{
+    return broker->connected;
+}
 
 int mqtt_subscribe(mqtt_broker_handle_t *broker, const char *topic, QoS qos)
 {
@@ -212,14 +277,13 @@ int mqtt_subscribe(mqtt_broker_handle_t *broker, const char *topic, QoS qos)
 	// utf topic
 	uint8_t utf_topic[2+strlen(topic)+1]; // 2 for message size + 1 for QoS
     
-    // set up topic payload
+        // set up topic payload
 	utf_topic[0] = 0;                       // MSB(strlen(topic));
 	utf_topic[1] = LSB(strlen(topic));
-    memcpy((char *)&utf_topic[2], topic, strlen(topic));
+	memcpy((char *)&utf_topic[2], topic, strlen(topic));
 	utf_topic[sizeof(utf_topic)-1] = qos; 
     
-    uint8_t fixed_header[] = { SET_MESSAGE(SUBSCRIBE), sizeof(var_header)+sizeof(utf_topic)};
-//    fixed_header_t  fixed_header = { .QoS = 0, .connect_msg_t = SUBSCRIBE, .remaining_length = sizeof(var_header)+strlen(utf_topic) };
+        uint8_t fixed_header[] = { SET_MESSAGE(SUBSCRIBE), sizeof(var_header)+sizeof(utf_topic)};
 	
 	uint8_t packet[sizeof(fixed_header)+sizeof(var_header)+sizeof(utf_topic)];
     
@@ -228,7 +292,7 @@ int mqtt_subscribe(mqtt_broker_handle_t *broker, const char *topic, QoS qos)
 	memcpy(packet+sizeof(fixed_header), var_header, sizeof(var_header));
 	memcpy(packet+sizeof(fixed_header)+sizeof(var_header), utf_topic, sizeof(utf_topic));
 	
-	if (send(broker->socket, packet, sizeof(packet), 0) < sizeof(packet)) {
+	if (send(broker->socket, packet, sizeof(packet), MSG_NOSIGNAL) < sizeof(packet)) {
         puts("failed to send subscribe message");
 		return -1;
     }
@@ -267,72 +331,10 @@ int SetSocketTimeout(int connectSocket, int milliseconds)
     return setsockopt (connectSocket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof tv);
 }
 
-void mqtt_display_message(mqtt_broker_handle_t *broker, int (*print)(int))
-{
-    uint8_t buffer[128];
-    SetSocketTimeout(broker->socket, 30000);
-
-    while(1) {
-        // wait for next message
-        long sz = recv(broker->socket, buffer, sizeof(buffer), 0);
-        //printf("message size is %ld\n",sz);        
-        // if more than ack - i.e. data > 0
-        if (sz == 0)
-        {
-           /* Socket has been disconnected */
-           printf("\nSocket EOF\n");
-
-           close(broker->socket);
-           broker->socket = 0;
-           return;
-        }
-
-        if(sz < 0)
-        {
-           printf("\nSocket recv returned %ld, errno %d %s\n",sz,errno, strerror(errno));
-
-           close(broker->socket); /* Close socket if we get an error */
-           broker->socket = 0;
-           exit(0);
-        }
-
-        if(sz > 0) {
-            //printf("message size is %ld\n",sz);
-            if( GET_MESSAGE(buffer[0]) == PUBLISH) {                
-                //printf("Got PUBLISH message with size %d\n", (uint8_t)buffer[1]);
-                uint32_t topicSize = (buffer[2]<<8) + buffer[3];
-                //printf("topic size is %d\n", topicSize);
-                //for(int loop = 0; loop < topicSize; ++loop) {
-                //    putchar(buffer[4+loop]);
-                //}
-                //putchar('\n');
-                unsigned long i = 4+topicSize;
-                if (((buffer[0]>>1) & 0x03) > QoS0) {
-                    uint32_t messageId = (buffer[4+topicSize] << 8) + buffer[4+topicSize+1];
-                    //printf("Message ID is %d\n", messageId);
-                    i += 2; // 2 extra for msgID
-                    // if QoS1 the send PUBACK with message ID
-                    uint8_t puback[4] = { SET_MESSAGE(PUBACK), 2, buffer[4+topicSize], buffer[4+topicSize+1] };
-                    if (send(broker->socket, puback, sizeof(puback), 0) < sizeof(puback)) {
-                        puts("failed to PUBACK");
-                        return;
-                    }
-                }
-                for ( ; i < sz; ++i) { 
-                    print(buffer[i]);
-                }
-                print('\n');
-                return;
-            }
-        }
-    }
-    
-}
-
 
 int mqtt_publish(mqtt_broker_handle_t *broker, const char *topic, const char *msg, QoS qos, bool retain)
 {
-	if (!broker->connected) {
+    if (!broker->connected) {
         return -1;
 	}
     if(qos > QoS2) {
@@ -383,9 +385,10 @@ int mqtt_publish(mqtt_broker_handle_t *broker, const char *topic, const char *ms
         memcpy(packet+sizeof(fixed_header), utf_topic, sizeof(utf_topic));
         memcpy(packet+sizeof(fixed_header)+sizeof(utf_topic), msg, strlen(msg));
         
-        if (send(broker->socket, packet, sizeof(packet), 0) < sizeof(packet)) {
+        if (send(broker->socket, packet, sizeof(packet), MSG_NOSIGNAL) < sizeof(packet)) {
             return -1;
         }
+        
         if(qos == QoS1){
             // expect PUBACK with MessageID
             uint8_t buffer[4];
@@ -412,7 +415,7 @@ int mqtt_publish(mqtt_broker_handle_t *broker, const char *topic, const char *ms
 void mqtt_disconnect(mqtt_broker_handle_t *broker)
 {
     uint8_t fixed_header[] = { SET_MESSAGE(DISCONNECT), 0};
-    if (send(broker->socket, fixed_header, sizeof(fixed_header), 0)< sizeof(fixed_header)) {
+    if (send(broker->socket, fixed_header, sizeof(fixed_header), MSG_NOSIGNAL)< sizeof(fixed_header)) {
         puts("failed to disconnect");
     }
 }

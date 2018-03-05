@@ -37,14 +37,17 @@ typedef struct mqtt_broker_handle mqtt_broker_handle_t;
 
 typedef enum {QoS0, QoS1, QoS2} QoS;
 
-mqtt_broker_handle_t * mqtt_connect(const char* client, const char * server_ip, uint32_t port);
+mqtt_broker_handle_t * mqtt_gethandle(const char* client, const char * server_ip, uint32_t port);
+
+int mqtt_connect(mqtt_broker_handle_t *broker);
+
 void mqtt_disconnect(mqtt_broker_handle_t *broker);
 
 int mqtt_publish(mqtt_broker_handle_t *broker, const char *topic, const char *msg, QoS qos, bool retain = 0);
+int mqtt_proc(mqtt_broker_handle_t *broker);
 
 int mqtt_subscribe(mqtt_broker_handle_t *broker, const char *topic, QoS qos);
-void mqtt_display_message(mqtt_broker_handle_t *broker, int (*print)(int));
 
-
+int mqtt_connected(mqtt_broker_handle_t *broker);
 
 #endif
