@@ -93,6 +93,7 @@ int main(int argc, char * argv[])
 	waterreading_m3 = read_waterreading (datafile.c_str());
 	double waterreading_m3_old = -1;
 	double waterflow_m3h = 0;
+	double waterflow_lmin = 0;
 	double waterflow_m3h_old = -1;
 
 	
@@ -141,7 +142,7 @@ int main(int argc, char * argv[])
 					}
 					
 
-					sprintf (msg, "%.1f", waterflow_m3h * 16.6666667);
+					sprintf (msg, "%.1f", waterflow_lmin);
 					printf ("MQTT Sending: home/watermeter/lmin:%s\n",msg);
 					
 					if(mqtt_publish(broker, "home/watermeter/lmin", msg, QoS0, 1) == -1) 
@@ -186,11 +187,9 @@ int main(int argc, char * argv[])
 				
 				int ctsstate;
 				sscanf(msg, "%lf %lf %d", &waterreading_m3, &waterflow_m3h, &ctsstate);
-
-				/* Re-Initialize the timeout data structure. */
-				timeout.tv_sec = 10;
-				timeout.tv_usec = 0;
-				
+				waterflow_lmin = waterflow_m3h * 16.6666667;
+				waterflowcountdowntimer = (60 / (waterflow_lmin)) + 1 ;
+				if (waterflowcountdowntimer > 60) waterflowcountdowntimer = 60; // Max 1 minute value hold				
 			}
 			else
 			{
@@ -199,9 +198,10 @@ int main(int argc, char * argv[])
 				{
 					if (waterflowcountdowntimer <= 0)
 					{
-						waterflowcountdowntimer = 10;
-						if (waterflow_m3h > 0.36) waterflow_m3h = 0.18;
-						else waterflow_m3h = waterflow_m3h / 2;
+						waterflow_m3h = waterflow_m3h / 2;
+						if (waterflow_m3h < 0.06) waterflow_m3h = 0;
+						waterflow_lmin = waterflow_m3h * 16.6666667;
+						if (waterflow_lmin > 0) waterflowcountdowntimer = (60 / (waterflow_lmin) + 1) ;				
 					}
 					waterflowcountdowntimer--;
 				}
