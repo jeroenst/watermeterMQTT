@@ -1,0 +1,13 @@
+[Unit]
+Description=watermeter MQTT publisher
+After=network.target auditd.service
+
+[Service]
+WorkingDirectory=/opt/watermeterMQTT
+ExecStart=/opt/watermeterMQTT/watermetermysqlMQTT.php /opt/watermeterMQTT/watermeterMQTT.ini
+KillMode=process
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+Alias=watermetermysqlMQTT.service
