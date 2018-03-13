@@ -64,7 +64,7 @@ function newvalue($topic, $msg)
                                 $row = $result->fetch_object();
                                 //var_dump ($row);
                                 $newdata["today"]["m3"] = number_format($newdata["total"]["m3"] - $row->m3,3);
-                                $mqtt->publish($topicprefix."m3_today", $newdata["today"]["m3"], 0,1);
+                                $mqtt->publish($topicprefix."today/m3", $newdata["today"]["m3"], 0,1);
                         }
                         else
                         {
@@ -80,9 +80,9 @@ function newvalue($topic, $msg)
                                 if ($row)
                                 {
                                         $newdata['yesterday']['m3'] = round($newdata["total"]["m3"] - $row->m3 - ["today"]["m3"],3);
-                                        $mqtt->publish($topicprefix."m3_yesterday", $newdata["yesterday"]["m3"],0,1);
+                                        $mqtt->publish($topicprefix."yesterday/m3", $newdata["yesterday"]["m3"],0,1);
                                 }
-                                else $mqtt->publish($topicprefix."m3_yesterday", "",0,1);   
+                                else $mqtt->publish($topicprefix."yesterday/m3", "",0,1);   
                         }
                         else
                         {
@@ -95,7 +95,7 @@ function newvalue($topic, $msg)
                         {
                                 $row = $result->fetch_object();
                                 $newdata['month']['m3'] = round($newdata["total"]["m3"]  - $row->m3, 3);
-                                $mqtt->publish($topicprefix."m3_month", $newdata["month"]["m3"]);
+                                $mqtt->publish($topicprefix."month/m3", $newdata["month"]["m3"],0,1);
                         }
                         else
                         {
@@ -108,7 +108,7 @@ function newvalue($topic, $msg)
                                 $row = $result->fetch_object();
                                 var_dump ($row);
                                 $newdata['year']['m3'] = round($newdata["total"]["m3"]  - $row->m3, 3);
-                                $mqtt->publish($topicprefix."m3_year", $newdata["year"]["m3"]);
+                                $mqtt->publish($topicprefix."year/m3", $newdata["year"]["m3"],0,1);
                         }
                         else
                         {
